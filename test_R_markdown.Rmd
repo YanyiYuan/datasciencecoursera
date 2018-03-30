@@ -1,0 +1,111 @@
+---
+title: "Practical Machine Learning Project"
+author: "Yanyi Yuan"
+date: "March 30, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive Summary
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Load Library
+```{r library}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(rattle)
+```
+
+## Load Data
+We first load the training and test dataset from the given URLs.
+```{r load}
+#Practical Machine Learning Project
+setwd("C:/Users/me/Documents/Coursera/Practial Machine Learning")
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",destfile = "pml_training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",destfile = "pml_testing.csv")
+pml_training <-read.csv("pml_training.csv")
+pml_testing <-read.csv("pml_testing.csv")
+
+
+
+```
+
+## Data Processing
+We clean the data by excluding variables that are vastly NA or near zero variance.
+```{r data}
+#Clean the data
+nzv <- nearZeroVar(pml_training)
+pml_training <- pml_training[,-nzv]
+pml_training <-pml_training[,colSums(is.na(pml_training)) == 0]
+
+nzv <- nearZeroVar(pml_testing)
+pml_testing <- pml_testing[,-nzv]
+pml_testing <- pml_testing[,colSums(is.na(pml_testing))==0]
+
+#remove the first six predictors since these variables have little predicting power for the outcome classe.
+trainData <- pml_training[, -c(1:6)]
+testData <- pml_testing[, -c(1:6)]
+dim(trainData)
+dim(testData)
+```
+The cleaned data sets trainData and testData both have 53 columns.
+
+#Data Splitting
+To get out-of-sample errors, we split the cleaned training set trainData into a training set (train, 70%) for prediction and a validation set (valid 30%) to compute the out-of-sample errors.
+```{r split}
+set.seed(7826) 
+inTrain <- createDataPartition(trainData$classe, p = 0.7, list = FALSE)
+train <- trainData[inTrain, ]
+valid <- trainData[-inTrain, ]
+
+```
+
+
+
+## Classificaton Tree
+First, we use classification tree to predict the outcome. We use 5-fold cross validation.
+
+```{r rpart}
+control <- trainControl(method = "cv", number = 5)  # 5-fold cross validation
+fit_rpart <- train(classe ~ ., data = train, method = "rpart", trControl = control)
+print(fit_rpart, digits = 4)
+fancyRpartPlot(fit_rpart$finalModel)
+
+# predict outcomes using validation set
+predict_rpart <- predict(fit_rpart, valid)
+# Show prediction result
+(conf_rpart <- confusionMatrix(valid$classe, predict_rpart))
+
+#prediction on testing set
+(predict(fit_rpart, testData))
+
+```
+From the confusion matrix, the accuracy rate is 0.5, and so the out-of-sample error rate is 0.5. Using classification tree does not predict the outcome classe very well.
+
+
+## Random Forest
+
+We then use random forest to predict the outcome.
+
+```{r rf}
+fit_rf <- train(classe ~ ., data = train, method = "rf", trControl = control)
+print(fit_rf, digits = 4)
+
+# predict outcomes using validation set
+predict_rf <- predict(fit_rf, valid)
+# Show prediction result
+(conf_rf <- confusionMatrix(valid$classe, predict_rf))
+
+#prediction on testing set
+(predict(fit_rf, testData))
+
+```
+
+Random forest method is way better than classification tree method. The accuracy rate is 0.991, and so the out-of-sample error rate is 0.009. This may be due to the fact that many predictors are highly correlated. Random forests chooses a subset of predictors at each split and decorrelate the trees. This leads to high accuracy, although this algorithm is sometimes difficult to interpret and computationally inefficient.
